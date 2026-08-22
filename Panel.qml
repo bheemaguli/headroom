@@ -650,7 +650,7 @@ Panel {
                 id: exportButton
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: Style.space(28)
+                implicitWidth: exportLabel.implicitWidth + Style.space(14)
                 implicitHeight: Style.space(28)
                 color: exportHover.hovered ? root.track : "transparent"
                 borderSpec: Border.controlSpec(
@@ -660,11 +660,12 @@ Panel {
                 opacity: (!root.online || root.exporting) ? 0.5 : 1
 
                 Text {
+                  id: exportLabel
                   anchors.centerIn: parent
-                  text: root.exporting ? "󰔟" : "󰁅"
+                  text: (root.exporting ? "󰔟" : "󰁅") + " Export"
                   color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: Style.font.caption
                 }
 
                 HoverHandler { id: exportHover }
