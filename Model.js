@@ -1,5 +1,9 @@
 .pragma library
 
+// Must stay in sync with system_health_check/constants.py PANEL_WINDOWS and
+// manifest.json barWidget.schema defaultWindow options.
+var PRESET_WINDOWS = ["1h", "24h", "7d", "14d", "30d"]
+
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v))
 }
@@ -91,9 +95,9 @@ function sparkPath(values, width, height) {
   return pts.join(" ")
 }
 
-function windowKeys(payload) {
+function windowKeys() {
   // Preset tabs only — custom range is the separate "C" control in the panel.
-  return ["1h", "24h", "7d", "14d", "30d"]
+  return PRESET_WINDOWS.slice()
 }
 
 function historyTitle(customSelected, customDays) {

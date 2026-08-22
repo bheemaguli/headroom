@@ -43,7 +43,7 @@ Panel {
   property bool customEditing: false
   property int customDraft: 7
 
-  readonly property var presetKeys: ["1h", "24h", "7d", "14d", "30d"]
+  readonly property var historyKeys: Model.windowKeys()
   readonly property bool isCustomSelected: selectedWindow === "custom" && customDays > 0
   readonly property string focusWindow: isCustomSelected
     ? (String(customDays) + "d")
@@ -53,7 +53,6 @@ Panel {
   readonly property var windows: (payload && payload.windows) ? payload.windows : ({})
   readonly property var series: (payload && payload.series) ? payload.series : ({})
   readonly property var advice: (payload && payload.advice) ? payload.advice : []
-  readonly property var historyKeys: root.presetKeys
   readonly property string historyHeading: Model.historyTitle(root.isCustomSelected, root.customDays)
   readonly property bool alarming: Model.alarming(now, cpuWarn, ramWarn, gpuWarn)
   readonly property string chipLabel: Model.barLabel(payload)
@@ -64,6 +63,19 @@ Panel {
     || Model.seriesHasPoints(series.gpu)
 
   function openFromHotkey() { root.open() }
+
+  // Applied locally first so the panel redraws on the click itself; the
+  // shell.json write comes back through the bar as the same value.
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) if (existing !== "id") entry[existing] = root.settings[existing]
+    for (var key in values) entry[key] = values[key]
+
+    root.settings = entry
+    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
 
   function refresh() {
     if (poll.running) return
@@ -96,6 +108,7 @@ Panel {
     customDays = days
     customEditing = false
     selectedWindow = "custom"
+    root.persistSettings({ customDays: days })
     root.refresh()
   }
 
@@ -359,6 +372,11 @@ Panel {
               valueText: Model.pct(root.now.cpu)
               fraction: (Number(root.now.cpu) || 0) / 100
               warn: root.now.cpu != null && Number(root.now.cpu) >= root.cpuWarn
+              foreground: root.foreground
+              dim: root.dim
+              urgent: root.urgent
+              track: root.track
+              fontFamily: root.fontFamily
             }
             MetricRow {
               width: parent.width
@@ -371,6 +389,11 @@ Panel {
               }
               fraction: (Number(root.now.ram) || 0) / 100
               warn: root.now.ram != null && Number(root.now.ram) >= root.ramWarn
+              foreground: root.foreground
+              dim: root.dim
+              urgent: root.urgent
+              track: root.track
+              fontFamily: root.fontFamily
             }
             MetricRow {
               visible: root.now.gpu !== null && root.now.gpu !== undefined
@@ -379,6 +402,11 @@ Panel {
               valueText: Model.pct(root.now.gpu)
               fraction: (Number(root.now.gpu) || 0) / 100
               warn: root.now.gpu != null && Number(root.now.gpu) >= root.gpuWarn
+              foreground: root.foreground
+              dim: root.dim
+              urgent: root.urgent
+              track: root.track
+              fontFamily: root.fontFamily
             }
             Text {
               text: "Load  " + (root.now.load1 != null ? root.now.load1 : "—")
@@ -530,11 +558,30 @@ Panel {
               }
             }
 
-            StatRow { width: parent.width; label: "CPU"; stat: root.selectedStats.cpu }
-            StatRow { width: parent.width; label: "RAM"; stat: root.selectedStats.ram }
+            StatRow {
+              width: parent.width
+              label: "CPU"
+              stat: root.selectedStats.cpu
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
+            }
+            StatRow {
+              width: parent.width
+              label: "RAM"
+              stat: root.selectedStats.ram
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
+            }
             StatRow {
               visible: root.selectedStats.gpu && root.selectedStats.gpu.avg !== null && root.selectedStats.gpu.avg !== undefined
-              width: parent.width; label: "GPU"; stat: root.selectedStats.gpu
+              width: parent.width
+              label: "GPU"
+              stat: root.selectedStats.gpu
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
             }
           }
 
@@ -554,15 +601,30 @@ Panel {
 
             SparkLine {
               visible: Model.seriesHasPoints(root.series.cpu)
-              width: parent.width; label: "CPU"; values: root.series.cpu || []
+              width: parent.width
+              label: "CPU"
+              values: root.series.cpu || []
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
             }
             SparkLine {
               visible: Model.seriesHasPoints(root.series.ram)
-              width: parent.width; label: "RAM"; values: root.series.ram || []
+              width: parent.width
+              label: "RAM"
+              values: root.series.ram || []
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
             }
             SparkLine {
               visible: Model.seriesHasPoints(root.series.gpu)
-              width: parent.width; label: "GPU"; values: root.series.gpu || []
+              width: parent.width
+              label: "GPU"
+              values: root.series.gpu || []
+              foreground: root.foreground
+              dim: root.dim
+              fontFamily: root.fontFamily
             }
           }
 
@@ -631,138 +693,6 @@ Panel {
           }
         }
       }
-    }
-  }
-
-  component MetricRow: Item {
-    id: metric
-    property string label: ""
-    property string valueText: ""
-    property real fraction: 0
-    property bool warn: false
-    height: Style.space(28)
-
-    Text {
-      id: metricLabel
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(44)
-      text: metric.label
-      color: metric.warn ? root.urgent : root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-      font.bold: true
-    }
-
-    Rectangle {
-      id: meterTrack
-      anchors.left: metricLabel.right
-      anchors.leftMargin: Style.space(8)
-      anchors.right: metricValue.left
-      anchors.rightMargin: Style.space(10)
-      anchors.verticalCenter: parent.verticalCenter
-      height: Style.space(8)
-      radius: height / 2
-      color: root.track
-
-      Rectangle {
-        width: parent.width * Model.clamp(metric.fraction, 0, 1)
-        height: parent.height
-        radius: parent.radius
-        color: metric.warn ? root.urgent : root.foreground
-      }
-    }
-
-    Text {
-      id: metricValue
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      text: metric.valueText
-      color: metric.warn ? root.urgent : root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-    }
-  }
-
-  component StatRow: Item {
-    id: statRow
-    property string label: ""
-    property var stat: ({})
-    height: Style.space(22)
-
-    Text {
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(44)
-      text: statRow.label
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-      font.bold: true
-    }
-    Text {
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      text: Model.statLine(statRow.stat)
-      color: root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-    }
-  }
-
-  component SparkLine: Item {
-    id: spark
-    property string label: ""
-    property var values: []
-    height: Style.space(36)
-
-    Text {
-      id: sparkLabel
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(44)
-      text: spark.label
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-    }
-
-    Canvas {
-      id: canvas
-      anchors.left: sparkLabel.right
-      anchors.leftMargin: Style.space(8)
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      height: Style.space(28)
-      onPaint: {
-        var ctx = getContext("2d")
-        ctx.clearRect(0, 0, width, height)
-        var path = Model.sparkPath(spark.values, width, height)
-        if (!path) return
-        ctx.strokeStyle = root.foreground
-        ctx.lineWidth = 1.5
-        ctx.lineJoin = "round"
-        ctx.lineCap = "round"
-        ctx.beginPath()
-        // Path from Model.sparkPath uses M/L commands — parse simply:
-        var parts = path.split(" ")
-        for (var i = 0; i < parts.length; ) {
-          var cmd = parts[i++]
-          var x = parseFloat(cmd.substring(1))
-          var y = parseFloat(parts[i++])
-          if (cmd.charAt(0) === "M") ctx.moveTo(x, y)
-          else ctx.lineTo(x, y)
-        }
-        ctx.stroke()
-      }
-      Connections {
-        target: spark
-        function onValuesChanged() { canvas.requestPaint() }
-      }
-      Component.onCompleted: requestPaint()
-      onWidthChanged: requestPaint()
-      onHeightChanged: requestPaint()
     }
   }
 }

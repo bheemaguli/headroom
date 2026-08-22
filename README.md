@@ -96,6 +96,19 @@ After a week or more: `system-health-check report 14d` (or the panel advice).
 omarchy plugin remove bheemaguli.system-health-check
 ```
 
+## Development
+
+Omarchy still loads from the plugin root (`BarWidget.qml`, `Panel.qml`, `cli.py`). Logic lives in the `system_health_check/` package; `cli.py` is a thin shim so the bar and `bin/system-health-check` keep the same paths.
+
+```bash
+# from the repo root
+python3 -m unittest discover -s tests -v
+python3 cli.py status
+python3 -m system_health_check history 7d
+```
+
+Preset ranges (`1h` · `24h` · `7d` · `14d` · `30d`) are duplicated in `system_health_check/constants.py`, `Model.js`, and `manifest.json` — keep them in sync when changing tabs.
+
 ## License
 
 MIT
