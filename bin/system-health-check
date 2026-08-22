@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Thin wrapper so `system-health-check` works from PATH and from the plugin tree.
+set -euo pipefail
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+exec python3 "$here/../cli.py" "$@"

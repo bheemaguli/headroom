@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "bheemaguli.system-health-check",
+  "name": "System Health Check",
+  "version": "1.0.0",
+  "author": "bheemaguli",
+  "license": "MIT",
+  "description": "Netdata-backed CPU, RAM, and GPU tracking in the Omarchy bar, with a CLI for history and laptop-sizing reports.",
+  "homepage": "https://github.com/bheemaguli/system-health-check",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "System Health",
+    "description": "Live CPU · RAM · GPU from Netdata, with 1h / 24h / 7d history and a laptop-sizing report.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "netdataUrl": "http://127.0.0.1:19999",
+      "refreshSeconds": 15,
+      "cpuWarnPercent": 85,
+      "ramWarnPercent": 80,
+      "gpuWarnPercent": 80
+    },
+    "schema": [
+      {
+        "key": "netdataUrl",
+        "type": "string",
+        "label": "Netdata URL",
+        "defaultValue": "http://127.0.0.1:19999"
+      },
+      {
+        "key": "refreshSeconds",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 15
+      },
+      {
+        "key": "cpuWarnPercent",
+        "type": "integer",
+        "label": "CPU warn %",
+        "min": 50,
+        "max": 100,
+        "step": 5,
+        "defaultValue": 85
+      },
+      {
+        "key": "ramWarnPercent",
+        "type": "integer",
+        "label": "RAM warn %",
+        "min": 50,
+        "max": 100,
+        "step": 5,
+        "defaultValue": 80
+      },
+      {
+        "key": "gpuWarnPercent",
+        "type": "integer",
+        "label": "GPU warn %",
+        "min": 50,
+        "max": 100,
+        "step": 5,
+        "defaultValue": 80
+      }
+    ]
+  }
+}
