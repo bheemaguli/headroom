@@ -24,6 +24,7 @@ Panel {
   readonly property string netdataUrl: String(setting("netdataUrl", "http://127.0.0.1:19999"))
   readonly property int refreshSeconds: Math.max(5, Number(setting("refreshSeconds", 15)) || 15)
   readonly property string defaultWindow: String(setting("defaultWindow", "7d") || "7d")
+  readonly property int customDaysSetting: Math.max(0, Math.min(90, Number(setting("customDays", 0)) || 0))
   readonly property int cpuWarn: Number(setting("cpuWarnPercent", 85)) || 85
   readonly property int ramWarn: Number(setting("ramWarnPercent", 80)) || 80
   readonly property int gpuWarn: Number(setting("gpuWarnPercent", 80)) || 80
@@ -32,9 +33,12 @@ Panel {
 
   property var payload: ({})
   property bool loading: false
+  property bool exporting: false
   property string lastError: ""
+  property string lastExportPath: ""
   property bool cursorActive: false
   property string selectedWindow: "7d"
+  property int customDays: 0
 
   readonly property bool online: !!(payload && payload.online)
   readonly property var now: (payload && payload.now) ? payload.now : ({})
@@ -53,9 +57,14 @@ Panel {
     if (poll.running) return
     loading = true
     var focus = root.selectedWindow || root.defaultWindow || "7d"
-    poll.command = [
+    var cmd = [
       "python3", root.cliPath, "--url", root.netdataUrl, "panel", "--window", focus
     ]
+    if (root.customDays > 0) {
+      cmd.push("--extra-days")
+      cmd.push(String(root.customDays))
+    }
+    poll.command = cmd
     poll.running = true
   }
 
@@ -64,6 +73,24 @@ Panel {
       root.bar.run("python3 \"" + root.cliPath + "\" --url \"" + root.netdataUrl + "\" open")
     else
       Quickshell.execDetached(["python3", root.cliPath, "--url", root.netdataUrl, "open"])
+  }
+
+  function applyCustomDays() {
+    if (root.customDays < 1) return
+    root.chooseWindow(String(root.customDays) + "d")
+  }
+
+  function exportCsv() {
+    if (exportProc.running) return
+    exporting = true
+    lastExportPath = ""
+    var focus = root.selectedWindow || root.defaultWindow || "7d"
+    var dir = Quickshell.env("HOME") + "/Downloads"
+    exportProc.command = [
+      "python3", root.cliPath, "--url", root.netdataUrl,
+      "export", focus, "-o", dir
+    ]
+    exportProc.running = true
   }
 
   function selectWindow(delta) {
@@ -90,10 +117,18 @@ Panel {
   }
 
   Component.onCompleted: {
+    customDays = root.customDaysSetting
     selectedWindow = root.defaultWindow || "7d"
+    if (customDays > 0 && (selectedWindow === "7d" || selectedWindow === root.defaultWindow)) {
+      // keep default unless user set customDays as the interesting range
+    }
     Qt.callLater(root.refresh)
   }
   onNetdataUrlChanged: Qt.callLater(root.refresh)
+  onCustomDaysSettingChanged: {
+    customDays = customDaysSetting
+    Qt.callLater(root.refresh)
+  }
   onDefaultWindowChanged: {
     if (historyKeys.indexOf(defaultWindow) >= 0)
       selectedWindow = defaultWindow
@@ -124,6 +159,25 @@ Panel {
     stderr: StdioCollector { waitForEnd: true }
     onExited: function(code) {
       if (!pollOut.text) root.loading = false
+    }
+  }
+
+  Process {
+    id: exportProc
+    stdout: StdioCollector {
+      id: exportOut
+      waitForEnd: true
+      onStreamFinished: {
+        root.exporting = false
+        var path = String(exportOut.text || "").trim()
+        root.lastExportPath = path
+        if (path && root.bar)
+          root.bar.run("omarchy-notification-send \"Exported " + path.replace(/"/g, "") + "\"")
+      }
+    }
+    stderr: StdioCollector { waitForEnd: true }
+    onExited: function(code) {
+      if (code !== 0) root.exporting = false
     }
   }
 
@@ -182,6 +236,8 @@ Panel {
         else if (t === "3") root.chooseWindow("7d")
         else if (t === "4") root.chooseWindow("14d")
         else if (t === "5") root.chooseWindow("30d")
+        else if (t === "e" || t === "E") root.exportCsv()
+        else if (t === "a" || t === "A") root.applyCustomDays()
       }
 
       Flickable {
@@ -346,6 +402,43 @@ Panel {
               visible: root.selectedStats.gpu && root.selectedStats.gpu.avg !== null && root.selectedStats.gpu.avg !== undefined
               width: parent.width; label: "GPU"; stat: root.selectedStats.gpu
             }
+
+            // Custom last-N-days (AWS-style arbitrary range)
+            Row {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Last N days"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              NumberField {
+                anchors.verticalCenter: parent.verticalCenter
+                label: ""
+                value: root.customDays
+                from: 0
+                to: 90
+                stepSize: 1
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                onModified: function(v) { root.customDays = v }
+              }
+
+              Button {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Apply"
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: root.customDays >= 1
+                onClicked: root.applyCustomDays()
+              }
+            }
           }
 
           // ---- sparklines for the selected window ----
@@ -406,6 +499,14 @@ Panel {
               onClicked: root.openNetdata()
             }
             Button {
+              text: root.exporting ? "Exporting…" : "Export CSV"
+              bordered: true
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              enabled: root.online && !root.exporting
+              onClicked: root.exportCsv()
+            }
+            Button {
               text: root.loading ? "Refreshing…" : "Refresh"
               bordered: true
               foreground: root.foreground
@@ -415,12 +516,22 @@ Panel {
           }
 
           Text {
+            visible: root.lastExportPath !== ""
+            width: parent.width
+            wrapMode: Text.WrapAnywhere
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            text: "Saved " + root.lastExportPath
+          }
+
+          Text {
             width: parent.width
             wrapMode: Text.WordWrap
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
-            text: "← → range · 1–5 · r refresh · o Netdata · middle refresh · right open"
+            text: "← → range · 1–5 · a apply days · e export · r refresh · o Netdata"
           }
         }
       }

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 DEFAULT_URL = os.environ.get("SYSTEM_HEALTH_CHECK_URL", "http://127.0.0.1:19999")
 # Presets shown in the bar panel (AWS console–style ranges).
 PANEL_WINDOWS = ["1h", "24h", "7d", "14d", "30d"]
-USER_AGENT = "system-health-check/1.1 (+omarchy-plugin)"
+USER_AGENT = "system-health-check/1.2 (+omarchy-plugin)"
 WINDOW_RE = re.compile(r"^(\d+)([smhd])$", re.IGNORECASE)
 UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
@@ -255,13 +255,13 @@ def cloudwatch_stats(avg_series, max_series=None):
     }
 
 
-def cpu_busy_series(base, after, points, group="average"):
+def cpu_busy_rows(base, after, points, group="average"):
     payload = chart_data(base, "system.cpu", after, points=points, group=group, options="absolute")
     names = dimension_names(payload)
     idle_i = dimension_index(payload, "idle")
     rows = rows_from_payload(payload)
     out = []
-    for _ts, vals in rows:
+    for ts, vals in rows:
         if idle_i is not None and idle_i < len(vals) and vals[idle_i] is not None:
             busy = max(0.0, min(100.0, 100.0 - float(vals[idle_i])))
         else:
@@ -271,17 +271,21 @@ def cpu_busy_series(base, after, points, group="average"):
                     continue
                 busy += float(vals[i])
             busy = max(0.0, min(100.0, busy))
-        out.append(round(busy, 2))
+        out.append((ts, round(busy, 2)))
     return out
 
 
-def ram_used_series(base, after, points, group="average"):
+def cpu_busy_series(base, after, points, group="average"):
+    return [v for _ts, v in cpu_busy_rows(base, after, points, group=group)]
+
+
+def ram_used_rows(base, after, points, group="average"):
     payload = chart_data(base, "system.ram", after, points=points, group=group, options="absolute")
     names = [n.lower() for n in dimension_names(payload)]
     idx = {n: i for i, n in enumerate(names)}
     rows = rows_from_payload(payload)
     out = []
-    for _ts, vals in rows:
+    for ts, vals in rows:
         def get(key):
             i = idx.get(key)
             if i is None or i >= len(vals) or vals[i] is None:
@@ -295,10 +299,14 @@ def ram_used_series(base, after, points, group="average"):
         parts = [v for v in (used, free, cached, buffers) if v is not None]
         total = sum(parts) if parts else None
         if used is not None and total and total > 0:
-            out.append(round(100.0 * used / total, 2))
+            out.append((ts, round(100.0 * used / total, 2)))
         else:
-            out.append(None)
+            out.append((ts, None))
     return out
+
+
+def ram_used_series(base, after, points, group="average"):
+    return [v for _ts, v in ram_used_rows(base, after, points, group=group)]
 
 
 def ram_snapshot(base):
@@ -351,16 +359,16 @@ def discover_gpu_chart(charts):
     )
 
 
-def first_dimension_series(base, chart, after, points, group="average"):
+def first_dimension_rows(base, chart, after, points, group="average"):
     if not chart:
         return []
     payload = chart_data(base, chart, after, points=points, group=group, options="absolute")
     names = [n.lower() for n in dimension_names(payload)]
     rows = rows_from_payload(payload)
     out = []
-    for _ts, vals in rows:
+    for ts, vals in rows:
         if not vals:
-            out.append(None)
+            out.append((ts, None))
             continue
         chosen = None
         for prefer in ("gpu", "utilization", "busy", "used", "mem"):
@@ -372,8 +380,12 @@ def first_dimension_series(base, chart, after, points, group="average"):
                 break
         if chosen is None:
             chosen = float(vals[0]) if vals[0] is not None else None
-        out.append(None if chosen is None else round(chosen, 2))
+        out.append((ts, None if chosen is None else round(chosen, 2)))
     return out
+
+
+def first_dimension_series(base, chart, after, points, group="average"):
+    return [v for _ts, v in first_dimension_rows(base, chart, after, points, group=group)]
 
 
 def disk_used_percent(base, charts):
@@ -495,6 +507,97 @@ def series_for_window(base, charts, seconds):
     }
 
 
+def series_rows_for_window(base, charts, seconds):
+    """Timestamped rows for CSV export: (ts, cpu, ram, gpu)."""
+    points = points_for_window(seconds)
+    gpu_chart = discover_gpu_chart(charts)
+    cpu = {ts: v for ts, v in cpu_busy_rows(base, seconds, points)}
+    ram = {ts: v for ts, v in ram_used_rows(base, seconds, points)}
+    gpu = {ts: v for ts, v in first_dimension_rows(base, gpu_chart, seconds, points)} if gpu_chart else {}
+    timestamps = sorted(set(cpu) | set(ram) | set(gpu))
+    return [(ts, cpu.get(ts), ram.get(ts), gpu.get(ts)) for ts in timestamps]
+
+
+def resolve_window(window=None, days=None):
+    """Resolve CLI window / --days into (label, seconds)."""
+    if days is not None:
+        days = int(days)
+        if days < 1 or days > 90:
+            raise ValueError("--days must be between 1 and 90")
+        return parse_window(f"{days}d")
+    return parse_window(window or "7d")
+
+
+def merge_window_keys(extra_days=None):
+    keys = list(PANEL_WINDOWS)
+    if extra_days is not None:
+        days = int(extra_days)
+        if 1 <= days <= 90:
+            label = f"{days}d"
+            if label not in keys:
+                keys.append(label)
+    return keys
+
+
+def export_csv(base, label, seconds, path=None):
+    """Write summary + time series CSV. Returns the output path or '-' for stdout."""
+    import csv
+    from io import StringIO
+    from pathlib import Path
+
+    charts = list_charts(base)
+    stats = window_stats(base, charts, seconds)
+    rows = series_rows_for_window(base, charts, seconds)
+    meta = info(base)
+    hosts = meta.get("mirrored_hosts")
+    host = hosts[0] if isinstance(hosts, list) and hosts else (meta.get("os_name") or "host")
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    buf = StringIO()
+    buf.write(f"# system-health-check export window={label} host={host} generated={generated}\n")
+    for metric in ("cpu", "ram", "gpu"):
+        s = stats.get(metric) or {}
+        buf.write(
+            "# {m} avg={avg} max={mx} min={mn} p95={p95} samples={n}\n".format(
+                m=metric,
+                avg=s.get("avg"),
+                mx=s.get("max"),
+                mn=s.get("min"),
+                p95=s.get("p95"),
+                n=s.get("samples"),
+            )
+        )
+    writer = csv.writer(buf)
+    writer.writerow(["timestamp_utc", "timestamp_unix", "cpu_pct", "ram_pct", "gpu_pct"])
+    for ts, cpu, ram, gpu in rows:
+        try:
+            iso = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except (OverflowError, OSError, ValueError):
+            iso = ""
+        writer.writerow([
+            iso,
+            int(ts) if ts is not None else "",
+            "" if cpu is None else cpu,
+            "" if ram is None else ram,
+            "" if gpu is None else gpu,
+        ])
+
+    text = buf.getvalue()
+    if not path or path == "-":
+        sys.stdout.write(text)
+        return "-"
+
+    out = Path(path).expanduser()
+    treat_as_dir = str(path).endswith(("/", "\\")) or out.suffix == "" or out.is_dir()
+    if treat_as_dir:
+        out.mkdir(parents=True, exist_ok=True)
+        out = out / f"system-health-{label}-{generated.replace(':', '')}.csv"
+    else:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    return str(out)
+
+
 def _first_metric(windows, metric, field, order=None):
     order = order or ("30d", "14d", "7d", "24h", "1h")
     for key in order:
@@ -552,7 +655,7 @@ def advice_from_windows(windows, now, focus=None):
     return tips
 
 
-def panel_payload(base, focus_window="7d"):
+def panel_payload(base, focus_window="7d", extra_days=None):
     try:
         focus_label, focus_seconds = parse_window(focus_window)
     except ValueError:
@@ -563,7 +666,7 @@ def panel_payload(base, focus_window="7d"):
         charts = list_charts(base)
         now = build_now(base, charts)
 
-        window_labels = list(PANEL_WINDOWS)
+        window_labels = merge_window_keys(extra_days)
         if focus_label not in window_labels:
             window_labels.append(focus_label)
 
@@ -585,6 +688,7 @@ def panel_payload(base, focus_window="7d"):
             "netdata_version": meta.get("version"),
             "collected_at": datetime.now(timezone.utc).isoformat(),
             "focus": focus_label,
+            "custom_days": int(extra_days) if extra_days not in (None, "") else None,
             "window_keys": window_labels,
             "now": now,
             "windows": windows,
@@ -598,7 +702,8 @@ def panel_payload(base, focus_window="7d"):
             "url": base.rstrip("/"),
             "error": str(e),
             "focus": focus_label,
-            "window_keys": list(PANEL_WINDOWS),
+            "custom_days": int(extra_days) if extra_days not in (None, "") else None,
+            "window_keys": merge_window_keys(extra_days),
             "now": {},
             "windows": {},
             "series": {},
@@ -706,15 +811,25 @@ def build_parser():
 
     h = sub.add_parser("history", help="Average / Maximum / p95 over a window (e.g. 7d, 14d, 30d)")
     h.add_argument("window", nargs="?", default="7d", help="Window like 24h, 7d, 14d, 30d")
+    h.add_argument("--days", type=int, help="Shortcut for Nd (1–90), overrides window")
 
     r = sub.add_parser("report", help="Sizing summary from Netdata history")
     r.add_argument("window", nargs="?", default="7d", help="Focus window for advice (e.g. 14d)")
+    r.add_argument("--days", type=int, help="Shortcut for Nd (1–90), overrides window")
 
     pan = sub.add_parser("panel", help="JSON payload for the Omarchy bar plugin")
     pan.add_argument("--window", default="7d", help="Focus window for sparklines + advice")
+    pan.add_argument("--days", type=int, help="Focus last N days and add that range to the panel")
+    pan.add_argument("--extra-days", type=int, help="Also include a custom Nd preset in window keys")
 
     c = sub.add_parser("charts", help="Sparkline series for a window")
     c.add_argument("window", nargs="?", default="7d", help="Window like 24h, 7d, 30d")
+    c.add_argument("--days", type=int, help="Shortcut for Nd (1–90), overrides window")
+
+    ex = sub.add_parser("export", help="Export avg/max/p95 header + time series as CSV")
+    ex.add_argument("window", nargs="?", default="7d", help="Window like 24h, 7d, 14d")
+    ex.add_argument("--days", type=int, help="Shortcut for Nd (1–90), overrides window")
+    ex.add_argument("-o", "--output", default="-", help="File path, directory, or - for stdout")
 
     sub.add_parser("open", help="Open the Netdata dashboard")
     return p
@@ -748,12 +863,26 @@ def main(argv=None):
         return 0 if payload.get("online") else 1
 
     if args.cmd == "panel":
-        payload = panel_payload(base, focus_window=args.window)
+        focus = args.window
+        extra = getattr(args, "extra_days", None)
+        if args.days is not None:
+            try:
+                focus, _seconds = resolve_window(days=args.days)
+            except ValueError as e:
+                print(str(e), file=sys.stderr)
+                return 2
+            extra = args.days if extra is None else extra
+        payload = panel_payload(base, focus_window=focus, extra_days=extra)
         print(json.dumps(payload, indent=2 if args.json else None))
         return 0 if payload.get("ok") else 1
 
     if args.cmd == "report":
-        payload = panel_payload(base, focus_window=args.window)
+        try:
+            label, _seconds = resolve_window(args.window, getattr(args, "days", None))
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        payload = panel_payload(base, focus_window=label, extra_days=getattr(args, "days", None))
         if args.json:
             print(json.dumps(payload, indent=2))
         else:
@@ -778,7 +907,7 @@ def main(argv=None):
 
     if args.cmd == "history":
         try:
-            label, seconds = parse_window(args.window)
+            label, seconds = resolve_window(args.window, getattr(args, "days", None))
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -806,7 +935,7 @@ def main(argv=None):
 
     if args.cmd == "charts":
         try:
-            label, seconds = parse_window(args.window)
+            label, seconds = resolve_window(args.window, getattr(args, "days", None))
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -827,6 +956,23 @@ def main(argv=None):
             for key, series in (payload.get("series") or {}).items():
                 print(f"{key}: {' '.join('—' if v is None else f'{v:.0f}' for v in series)}")
         return 0 if payload.get("online") else 1
+
+    if args.cmd == "export":
+        try:
+            label, seconds = resolve_window(args.window, getattr(args, "days", None))
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        try:
+            out = export_csv(base, label, seconds, path=args.output)
+        except NetdataError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        if out != "-" and not args.json:
+            print(out)
+        elif args.json:
+            print(json.dumps({"ok": True, "path": out, "window": label}, indent=2))
+        return 0
 
     return 2
 
