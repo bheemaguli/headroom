@@ -79,7 +79,7 @@ SYSTEM_HEALTH_CHECK_URL=http://127.0.0.1:19999 system-health-check report 30d
 | `ramWarnPercent` | `80` | Warning threshold |
 | `gpuWarnPercent` | `80` | Warning threshold |
 
-In the panel: **C** opens a custom day range (input is labeled **days**), **✓** applies it. Advice always follows the selected history range. **Export CSV** saves under `~/Downloads`.
+In the panel: **C** opens a custom day range (input is labeled **days**), **✓** applies it. Advice always follows the selected history range. The history section’s **↓** control exports CSV under `~/Downloads`; the NOW section’s refresh icon reloads live metrics.
 
 ## Two machines
 

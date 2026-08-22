@@ -358,12 +358,55 @@ Panel {
             width: parent.width
             spacing: Style.space(8)
 
-            Text {
-              text: "NOW"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
+            Item {
+              width: parent.width
+              height: Style.space(24)
+
+              Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "NOW"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              BorderSurface {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: Style.space(28)
+                implicitHeight: Style.space(28)
+                color: refreshHover.hovered ? root.track : "transparent"
+                borderSpec: Border.controlSpec(
+                  refreshHover.hovered ? "hover-cursor" : "normal",
+                  root.foreground, Color.accent)
+                radius: Style.cornerRadius
+                opacity: root.loading ? 0.6 : 1
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "󰑐"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+
+                  RotationAnimator on rotation {
+                    running: root.loading
+                    from: 0; to: 360
+                    duration: 800
+                    loops: Animation.Infinite
+                  }
+                }
+
+                HoverHandler { id: refreshHover }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  enabled: !root.loading
+                  onClicked: root.refresh()
+                }
+              }
             }
 
             MetricRow {
@@ -583,6 +626,56 @@ Panel {
               dim: root.dim
               fontFamily: root.fontFamily
             }
+
+            Item {
+              width: parent.width
+              height: Style.space(28)
+
+              Text {
+                visible: root.lastExportPath !== ""
+                anchors.left: parent.left
+                anchors.right: exportButton.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                wrapMode: Text.WrapAnywhere
+                elide: Text.ElideMiddle
+                maximumLineCount: 1
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                text: "Saved " + root.lastExportPath
+              }
+
+              BorderSurface {
+                id: exportButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: Style.space(28)
+                implicitHeight: Style.space(28)
+                color: exportHover.hovered ? root.track : "transparent"
+                borderSpec: Border.controlSpec(
+                  exportHover.hovered ? "hover-cursor" : "normal",
+                  root.foreground, Color.accent)
+                radius: Style.cornerRadius
+                opacity: (!root.online || root.exporting) ? 0.5 : 1
+
+                Text {
+                  anchors.centerIn: parent
+                  text: root.exporting ? "󰔟" : "󰁅"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                HoverHandler { id: exportHover }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  enabled: root.online && !root.exporting
+                  onClicked: root.exportCsv()
+                }
+              }
+            }
           }
 
           // ---- sparklines for the selected window (hidden when Netdata has no series yet) ----
@@ -652,35 +745,6 @@ Panel {
                 font.pixelSize: Style.font.body
               }
             }
-          }
-
-          Row {
-            spacing: Style.space(8)
-            Button {
-              text: root.exporting ? "Exporting…" : "Export CSV"
-              bordered: true
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              enabled: root.online && !root.exporting
-              onClicked: root.exportCsv()
-            }
-            Button {
-              text: root.loading ? "Refreshing…" : "Refresh"
-              bordered: true
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.refresh()
-            }
-          }
-
-          Text {
-            visible: root.lastExportPath !== ""
-            width: parent.width
-            wrapMode: Text.WrapAnywhere
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            text: "Saved " + root.lastExportPath
           }
 
           Text {
