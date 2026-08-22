@@ -8,8 +8,8 @@ import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "bheemaguli.system-health-check"
-  ipcTarget: "bheemaguli.system-health-check"
+  moduleName: "bheemaguli.headroom"
+  ipcTarget: "bheemaguli.headroom"
   manageIpc: false
 
   property Item anchorItem: null
@@ -252,7 +252,7 @@ Panel {
   }
 
   IpcHandler {
-    target: "bheemaguli.system-health-check"
+    target: "bheemaguli.headroom"
     function open(): void { root.openFromHotkey() }
     function close(): void { root.close() }
     function show(): void { root.openFromHotkey() }
@@ -332,7 +332,7 @@ Panel {
 
           PanelHero {
             width: parent.width
-            title: "System health"
+            title: "Headroom"
             meta: root.online
               ? ((root.payload.netdata_version ? "Netdata " + root.payload.netdata_version : "Netdata") +
                  (root.loading ? " · refreshing" : ""))
@@ -367,7 +367,7 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             text: (root.lastError ? root.lastError + "\n\n" : "") +
-                  "Install and start Netdata, then this chip tracks history for laptop sizing.\n\n" +
+                  "Install and start Netdata, then Headroom tracks whether this machine still has room for your work.\n\n" +
                   "omarchy pkg add netdata\n" +
                   "sudo systemctl enable --now netdata"
           }
@@ -728,7 +728,7 @@ Panel {
             width: parent.width
             spacing: Style.space(6)
             Text {
-              text: "FOR YOUR NEXT COMPUTER"
+              text: "IS THIS MACHINE ENOUGH?"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

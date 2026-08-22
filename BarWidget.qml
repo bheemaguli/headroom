@@ -6,7 +6,7 @@ import qs.Ui
 // so history survives between opens.
 BarWidget {
   id: root
-  moduleName: "bheemaguli.system-health-check"
+  moduleName: "bheemaguli.headroom"
 
   function injectPanel() {
     var target = panelLoader.item
@@ -62,7 +62,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.chipLabel : "···"
-    tooltipText: panelLoader.item ? panelLoader.item.chipTooltip : "System health"
+    tooltipText: panelLoader.item ? panelLoader.item.chipTooltip : "Headroom"
     active: panelLoader.item ? panelLoader.item.alarming : false
     fontSize: Style.font.caption
     horizontalMargin: 8

@@ -1,4 +1,4 @@
-"""python -m system_health_check"""
+"""python -m headroom"""
 
 import sys
 

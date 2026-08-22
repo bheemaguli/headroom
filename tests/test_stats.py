@@ -1,6 +1,6 @@
 import unittest
 
-from system_health_check.parse import cloudwatch_stats, percentile, series_stats
+from headroom.parse import cloudwatch_stats, percentile, series_stats
 
 
 class StatsTests(unittest.TestCase):

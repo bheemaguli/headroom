@@ -21,7 +21,7 @@ def export_csv(base, label, seconds, path=None):
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     buf = StringIO()
-    buf.write(f"# system-health-check export window={label} host={host} generated={generated}\n")
+    buf.write(f"# headroom export window={label} host={host} generated={generated}\n")
     for metric in ("cpu", "ram", "gpu"):
         s = stats.get(metric) or {}
         buf.write(
@@ -60,7 +60,7 @@ def export_csv(base, label, seconds, path=None):
     treat_as_dir = str(path).endswith(("/", "\\")) or out.suffix == "" or out.is_dir()
     if treat_as_dir:
         out.mkdir(parents=True, exist_ok=True)
-        out = out / f"system-health-{label}-{generated.replace(':', '')}.csv"
+        out = out / f"headroom-{label}-{generated.replace(':', '')}.csv"
     else:
         out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")

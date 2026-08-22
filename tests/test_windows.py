@@ -1,6 +1,6 @@
 import unittest
 
-from system_health_check.windows import (
+from headroom.windows import (
     human_window,
     parse_window,
     points_for_window,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Thin wrapper so `system-health-check` works from PATH and from the plugin tree.
+# Thin wrapper so `headroom` works from PATH and from the plugin tree.
 # Resolve symlinks so a ~/.local/bin link still finds ../cli.py in the plugin.
 set -euo pipefail
 here=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)

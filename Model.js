@@ -1,6 +1,6 @@
 .pragma library
 
-// Must stay in sync with system_health_check/constants.py PANEL_WINDOWS and
+// Must stay in sync with headroom/constants.py PANEL_WINDOWS and
 // manifest.json barWidget.schema defaultWindow options.
 var PRESET_WINDOWS = ["1h", "24h", "7d", "14d", "30d"]
 
@@ -40,7 +40,7 @@ function alarming(now, cpuWarn, ramWarn, gpuWarn) {
 }
 
 function barLabel(payload) {
-  if (!payload || !payload.online) return "ND?"
+  if (!payload || !payload.online) return "HR?"
   var now = payload.now || {}
   var parts = []
   parts.push(pctShort(now.cpu))
@@ -50,7 +50,7 @@ function barLabel(payload) {
 }
 
 function barTooltip(payload) {
-  if (!payload) return "System health"
+  if (!payload) return "Headroom"
   if (!payload.online) return "Netdata offline — click for setup"
   var now = payload.now || {}
   var bits = [

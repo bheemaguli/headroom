@@ -1,4 +1,4 @@
-"""Sizing advice from history windows for the next computer."""
+"""Headroom advice from history — is this machine still enough?"""
 
 from .windows import human_window
 
@@ -11,7 +11,7 @@ def _metric(window, name, field):
 
 
 def advice_from_windows(windows, now, focus=None):
-    """Sizing tips for the selected range only (no cross-window fallback)."""
+    """Capacity tips for the selected range only (no cross-window fallback)."""
     focus = focus or "7d"
     phrase = human_window(focus)
     lead = f"Based on {phrase} usage analysis"
@@ -32,7 +32,7 @@ def advice_from_windows(windows, now, focus=None):
     total = (now or {}).get("ram_total_gb")
 
     if ram_avg is not None and ram_avg >= 70:
-        tips.append("RAM averages high — prefer more memory on the next computer.")
+        tips.append("RAM averages high — this machine is short on memory headroom.")
     elif ram_p95 is not None and ram_p95 >= 80:
         tips.append("RAM p95 is high — size memory for sustained load, not idle.")
     elif ram_peak is not None and ram_peak >= 85 and (ram_avg or 0) < 50:
@@ -41,7 +41,7 @@ def advice_from_windows(windows, now, focus=None):
             "unless those workloads follow you."
         )
     elif ram_peak is not None and ram_peak >= 85:
-        tips.append("RAM peaks hard under load — size up if those workloads move with you.")
+        tips.append("RAM peaks hard under load — size up if those workloads stay with you.")
     elif total is not None and total <= 16 and ram_avg is not None and ram_avg >= 55:
         tips.append(f"You are often using over half of {total:g} GB RAM — 32 GB is a safer target.")
 
@@ -60,7 +60,7 @@ def advice_from_windows(windows, now, focus=None):
         )
 
     if not tips:
-        tips.append(f"{lead}, nothing looks maxed — mid-range CPU/RAM should cover this period's use.")
+        tips.append(f"{lead}, nothing looks maxed — this machine should cover this period's use.")
     else:
         first = tips[0]
         # Lowercase only normal sentence case; keep acronyms like CPU/RAM.

@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
-from system_health_check.parse import dimension_names, rows_from_payload
+from headroom.parse import dimension_names, rows_from_payload
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

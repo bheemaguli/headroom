@@ -1,6 +1,6 @@
 import unittest
 
-from system_health_check.advice import advice_from_windows
+from headroom.advice import advice_from_windows
 
 
 def _stat(avg=None, mx=None, p95=None, samples=10):
@@ -21,7 +21,7 @@ class AdviceTests(unittest.TestCase):
             }
         }
         tips = advice_from_windows(windows, {"ram_total_gb": 16, "gpu": 5}, focus="7d")
-        self.assertTrue(any("RAM averages high" in t for t in tips))
+        self.assertTrue(any("short on memory headroom" in t for t in tips))
         self.assertTrue(tips[0].startswith("Based on 7 day usage analysis"))
 
     def test_no_gpu_metrics(self):
@@ -44,9 +44,9 @@ class AdviceTests(unittest.TestCase):
             }
         }
         tips = advice_from_windows(windows, {"ram_total_gb": 32, "gpu": 1}, focus="14d")
-        self.assertEqual(len(tips), 1)
         self.assertIn("nothing looks maxed", tips[0])
         self.assertTrue(tips[0].startswith("Based on 14 day usage analysis"))
+        self.assertIn("this machine should cover", tips[0])
 
 
 if __name__ == "__main__":

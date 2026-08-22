@@ -36,8 +36,8 @@ def open_dashboard(base):
 
 def build_parser():
     p = argparse.ArgumentParser(
-        prog="system-health-check",
-        description="Track CPU/GPU/RAM over time via Netdata (CLI + Omarchy bar data source).",
+        prog="headroom",
+        description="Track CPU/GPU/RAM headroom over time via Netdata (CLI + Omarchy bar data source).",
     )
     p.add_argument("--url", default=DEFAULT_URL, help=f"Netdata base URL (default {DEFAULT_URL})")
     p.add_argument("--json", action="store_true", help="Machine-readable JSON on stdout")

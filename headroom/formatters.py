@@ -64,6 +64,6 @@ def print_human_report(payload):
             continue
         print_human_history(w, key)
         print()
-    print("For your next computer")
+    print("Is this machine enough?")
     for tip in payload.get("advice") or []:
         print(f"- {tip}")
