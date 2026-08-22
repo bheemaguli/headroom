@@ -127,6 +127,7 @@ Panel {
     if (exportProc.running) return
     exporting = true
     lastExportPath = ""
+    clearExportPathTimer.stop()
     var focus = root.focusWindow
     var dir = Quickshell.env("HOME") + "/Downloads"
     exportProc.command = [
@@ -134,6 +135,11 @@ Panel {
       "export", focus, "-o", dir
     ]
     exportProc.running = true
+  }
+
+  function clearExportPath() {
+    lastExportPath = ""
+    clearExportPathTimer.stop()
   }
 
   function selectWindow(delta) {
@@ -163,6 +169,17 @@ Panel {
     running: true
     repeat: true
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    id: clearExportPathTimer
+    interval: 4000
+    repeat: false
+    onTriggered: root.lastExportPath = ""
+  }
+
+  onOpenedChanged: {
+    if (!opened) root.clearExportPath()
   }
 
   Component.onCompleted: {
@@ -221,8 +238,11 @@ Panel {
         root.exporting = false
         var path = String(exportOut.text || "").trim()
         root.lastExportPath = path
-        if (path && root.bar)
-          root.bar.run("omarchy-notification-send \"Exported " + path.replace(/"/g, "") + "\"")
+        if (path) {
+          clearExportPathTimer.restart()
+          if (root.bar)
+            root.bar.run("omarchy-notification-send \"Exported " + path.replace(/"/g, "") + "\"")
+        }
       }
     }
     stderr: StdioCollector { waitForEnd: true }
@@ -662,7 +682,7 @@ Panel {
                 Text {
                   id: exportLabel
                   anchors.centerIn: parent
-                  text: (root.exporting ? "󰔟" : "󰁅") + " Export"
+                  text: "Export " + (root.exporting ? "󰔟" : "󰁅")
                   color: root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
