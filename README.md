@@ -20,10 +20,8 @@ Leave Netdata running for days/weeks so longer ranges (`14d`, `30d`) fill in. Re
 ## Install (Omarchy plugin)
 
 ```bash
-omarchy plugin add https://github.com/bheemaguli/system-health-check.git --enable
+omarchy plugin add https://github.com/bheemaguli/headroom.git --enable
 ```
-
-(GitHub repo may still be `system-health-check` until you rename it to `headroom`; plugin id is `bheemaguli.headroom` either way.)
 
 Optional CLI on your PATH:
 
@@ -86,7 +84,7 @@ In the panel: **C** opens a custom day range (input is labeled **days**), **✓*
 ## Two machines
 
 ```bash
-omarchy plugin add https://github.com/bheemaguli/system-health-check.git --enable
+omarchy plugin add https://github.com/bheemaguli/headroom.git --enable
 omarchy pkg add netdata && sudo systemctl enable --now netdata
 ```
 
