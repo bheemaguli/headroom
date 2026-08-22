@@ -59,6 +59,15 @@ function barTooltip(payload) {
   return bits.join("  ·  ")
 }
 
+function seriesHasPoints(values) {
+  var list = values || []
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] !== null && list[i] !== undefined && isFinite(Number(list[i])))
+      return true
+  }
+  return false
+}
+
 function sparkPath(values, width, height) {
   var pts = []
   var list = values || []
@@ -69,18 +78,26 @@ function sparkPath(values, width, height) {
     var v = Number(list[i])
     if (isFinite(v) && v > max) max = v
   }
+  // Keep flat/near-zero series off the bottom edge so the chart is visible.
+  var pad = Math.max(2, height * 0.12)
+  var usable = Math.max(1, height - pad * 2)
   for (var j = 0; j < n; j++) {
     var raw = list[j]
     var yv = (raw === null || raw === undefined || !isFinite(Number(raw))) ? 0 : Number(raw)
     var x = n === 1 ? 0 : (j / (n - 1)) * width
-    var y = height - (clamp(yv, 0, max) / max) * height
+    var y = pad + usable - (clamp(yv, 0, max) / max) * usable
     pts.push((j === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1))
   }
   return pts.join(" ")
 }
 
 function windowKeys(payload) {
-  if (payload && payload.window_keys && payload.window_keys.length)
-    return payload.window_keys
+  // Preset tabs only — custom range is the separate "C" control in the panel.
   return ["1h", "24h", "7d", "14d", "30d"]
+}
+
+function historyTitle(customSelected, customDays) {
+  if (customSelected && customDays > 0)
+    return "HISTORY (" + customDays + " DAYS)"
+  return "HISTORY"
 }

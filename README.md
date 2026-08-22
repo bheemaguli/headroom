@@ -73,13 +73,13 @@ SYSTEM_HEALTH_CHECK_URL=http://127.0.0.1:19999 system-health-check report 30d
 |-----|---------|---------|
 | `netdataUrl` | `http://127.0.0.1:19999` | Netdata base URL |
 | `defaultWindow` | `7d` | Initial history range |
-| `customDays` | `0` | Extra Nd preset (0 = off) |
+| `customDays` | `0` | Remembered custom day count for the **C** tab (0 = unset) |
 | `refreshSeconds` | `15` | Chip refresh interval |
 | `cpuWarnPercent` | `85` | Warning threshold |
 | `ramWarnPercent` | `80` | Warning threshold |
 | `gpuWarnPercent` | `80` | Warning threshold |
 
-In the panel: set **Last N days** → **Apply**, or **Export CSV** (saves under `~/Downloads`).
+In the panel: **C** opens a custom day range (input is labeled **days**), **✓** applies it. Advice always follows the selected history range. **Export CSV** saves under `~/Downloads`.
 
 ## Two machines
 

@@ -37,33 +37,43 @@ Panel {
   property string lastError: ""
   property string lastExportPath: ""
   property bool cursorActive: false
+  // Preset key ("7d") or "custom" when the C tab owns the range.
   property string selectedWindow: "7d"
   property int customDays: 0
+  property bool customEditing: false
+  property int customDraft: 7
 
+  readonly property var presetKeys: ["1h", "24h", "7d", "14d", "30d"]
+  readonly property bool isCustomSelected: selectedWindow === "custom" && customDays > 0
+  readonly property string focusWindow: isCustomSelected
+    ? (String(customDays) + "d")
+    : (selectedWindow || defaultWindow || "7d")
   readonly property bool online: !!(payload && payload.online)
   readonly property var now: (payload && payload.now) ? payload.now : ({})
   readonly property var windows: (payload && payload.windows) ? payload.windows : ({})
   readonly property var series: (payload && payload.series) ? payload.series : ({})
   readonly property var advice: (payload && payload.advice) ? payload.advice : []
-  readonly property var historyKeys: Model.windowKeys(payload)
+  readonly property var historyKeys: root.presetKeys
+  readonly property string historyHeading: Model.historyTitle(root.isCustomSelected, root.customDays)
   readonly property bool alarming: Model.alarming(now, cpuWarn, ramWarn, gpuWarn)
   readonly property string chipLabel: Model.barLabel(payload)
   readonly property string chipTooltip: Model.barTooltip(payload)
-  readonly property var selectedStats: windows[selectedWindow] || ({})
+  readonly property var selectedStats: windows[focusWindow] || ({})
+  readonly property bool hasTrend: Model.seriesHasPoints(series.cpu)
+    || Model.seriesHasPoints(series.ram)
+    || Model.seriesHasPoints(series.gpu)
 
   function openFromHotkey() { root.open() }
 
   function refresh() {
     if (poll.running) return
     loading = true
-    var focus = root.selectedWindow || root.defaultWindow || "7d"
+    var focus = root.focusWindow
     var cmd = [
       "python3", root.cliPath, "--url", root.netdataUrl, "panel", "--window", focus
     ]
-    if (root.customDays > 0) {
-      cmd.push("--extra-days")
-      cmd.push(String(root.customDays))
-    }
+    if (root.customDays > 0)
+      cmd.push("--extra-days", String(root.customDays))
     poll.command = cmd
     poll.running = true
   }
@@ -75,16 +85,36 @@ Panel {
       Quickshell.execDetached(["python3", root.cliPath, "--url", root.netdataUrl, "open"])
   }
 
-  function applyCustomDays() {
-    if (root.customDays < 1) return
-    root.chooseWindow(String(root.customDays) + "d")
+  function openCustomEditor() {
+    customDraft = customDays > 0 ? customDays : 7
+    customEditing = true
+  }
+
+  function confirmCustomDays() {
+    var days = Math.max(1, Math.min(90, Number(customDraft) || 0))
+    if (days < 1) return
+    customDays = days
+    customEditing = false
+    selectedWindow = "custom"
+    root.refresh()
+  }
+
+  function onCustomTabClicked() {
+    if (customEditing) return
+    if (isCustomSelected)
+      openCustomEditor()
+    else if (customDays > 0) {
+      selectedWindow = "custom"
+      root.refresh()
+    } else
+      openCustomEditor()
   }
 
   function exportCsv() {
     if (exportProc.running) return
     exporting = true
     lastExportPath = ""
-    var focus = root.selectedWindow || root.defaultWindow || "7d"
+    var focus = root.focusWindow
     var dir = Quickshell.env("HOME") + "/Downloads"
     exportProc.command = [
       "python3", root.cliPath, "--url", root.netdataUrl,
@@ -94,16 +124,22 @@ Panel {
   }
 
   function selectWindow(delta) {
-    var keys = root.historyKeys
-    var idx = keys.indexOf(selectedWindow)
+    var keys = root.historyKeys.slice()
+    if (root.customDays > 0) keys.push("custom")
+    var current = root.selectedWindow
+    var idx = keys.indexOf(current)
     if (idx < 0) idx = keys.indexOf(root.defaultWindow)
     if (idx < 0) idx = 0
     idx = (idx + delta + keys.length) % keys.length
-    selectedWindow = keys[idx]
-    root.refresh()
+    if (keys[idx] === "custom") {
+      selectedWindow = "custom"
+      root.refresh()
+    } else
+      root.chooseWindow(keys[idx])
   }
 
   function chooseWindow(key) {
+    customEditing = false
     selectedWindow = key
     root.refresh()
   }
@@ -118,19 +154,20 @@ Panel {
 
   Component.onCompleted: {
     customDays = root.customDaysSetting
-    selectedWindow = root.defaultWindow || "7d"
-    if (customDays > 0 && (selectedWindow === "7d" || selectedWindow === root.defaultWindow)) {
-      // keep default unless user set customDays as the interesting range
-    }
+    if (customDays > 0)
+      selectedWindow = "custom"
+    else
+      selectedWindow = root.defaultWindow || "7d"
     Qt.callLater(root.refresh)
   }
   onNetdataUrlChanged: Qt.callLater(root.refresh)
   onCustomDaysSettingChanged: {
     customDays = customDaysSetting
-    Qt.callLater(root.refresh)
+    if (customDays > 0 && selectedWindow === "custom")
+      Qt.callLater(root.refresh)
   }
   onDefaultWindowChanged: {
-    if (historyKeys.indexOf(defaultWindow) >= 0)
+    if (selectedWindow !== "custom" && historyKeys.indexOf(defaultWindow) >= 0)
       selectedWindow = defaultWindow
     Qt.callLater(root.refresh)
   }
@@ -229,6 +266,10 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
+        if (root.customEditing) {
+          if (t === "\r" || t === "\n") root.confirmCustomDays()
+          return
+        }
         if (t === "r" || t === "R") root.refresh()
         else if (t === "o" || t === "O") root.openNetdata()
         else if (t === "1") root.chooseWindow("1h")
@@ -236,8 +277,8 @@ Panel {
         else if (t === "3") root.chooseWindow("7d")
         else if (t === "4") root.chooseWindow("14d")
         else if (t === "5") root.chooseWindow("30d")
+        else if (t === "c" || t === "C") root.onCustomTabClicked()
         else if (t === "e" || t === "E") root.exportCsv()
-        else if (t === "a" || t === "A") root.applyCustomDays()
       }
 
       Flickable {
@@ -263,7 +304,6 @@ Panel {
               ? ((root.payload.netdata_version ? "Netdata " + root.payload.netdata_version : "Netdata") +
                  (root.loading ? " · refreshing" : ""))
               : "Netdata offline"
-            // Range lives only in HISTORY tabs — avoid a duplicate "24h" pill here.
             detail: root.online ? "" : "setup"
             foreground: root.alarming ? root.urgent : root.foreground
             fontFamily: root.fontFamily
@@ -273,6 +313,15 @@ Panel {
                 color: root.alarming ? root.urgent : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.display
+              }
+            }
+            trailingControl: Component {
+              Button {
+                text: "Open Netdata"
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                onClicked: root.openNetdata()
               }
             }
           }
@@ -357,7 +406,7 @@ Panel {
               Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: "HISTORY"
+                text: root.historyHeading
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -367,16 +416,17 @@ Panel {
               Row {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(8)
+                spacing: Style.space(6)
+
                 Repeater {
                   model: root.historyKeys
                   delegate: BorderSurface {
                     required property string modelData
-                    implicitWidth: winLabel.implicitWidth + Style.space(10)
+                    implicitWidth: Math.max(winLabel.implicitWidth + Style.space(10), Style.space(28))
                     implicitHeight: winLabel.implicitHeight + Style.space(4)
-                    color: modelData === root.selectedWindow ? root.track : "transparent"
+                    color: !root.isCustomSelected && modelData === root.selectedWindow ? root.track : "transparent"
                     borderSpec: Border.controlSpec(
-                      modelData === root.selectedWindow ? "selected" : "normal",
+                      (!root.isCustomSelected && modelData === root.selectedWindow) ? "selected" : "normal",
                       root.foreground, Color.accent)
                     radius: Style.cornerRadius
                     Text {
@@ -394,6 +444,89 @@ Panel {
                     }
                   }
                 }
+
+                BorderSurface {
+                  implicitWidth: Style.space(28)
+                  implicitHeight: customTabLabel.implicitHeight + Style.space(4)
+                  color: root.isCustomSelected ? root.track : "transparent"
+                  borderSpec: Border.controlSpec(
+                    root.isCustomSelected ? "selected" : "normal",
+                    root.foreground, Color.accent)
+                  radius: Style.cornerRadius
+                  Text {
+                    id: customTabLabel
+                    anchors.centerIn: parent
+                    text: "C"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.onCustomTabClicked()
+                  }
+                }
+              }
+            }
+
+            Row {
+              visible: root.customEditing
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Custom range"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              NumberField {
+                id: customDaysField
+                anchors.verticalCenter: parent.verticalCenter
+                label: ""
+                value: root.customDraft
+                from: 1
+                to: 90
+                stepSize: 1
+                fieldWidth: Style.space(64)
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                onModified: function(v) { root.customDraft = v }
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "days"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              BorderSurface {
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: Style.space(28)
+                implicitHeight: Style.space(28)
+                color: root.track
+                borderSpec: Border.controlSpec("selected", root.foreground, Color.accent)
+                radius: Style.cornerRadius
+                Text {
+                  anchors.centerIn: parent
+                  text: "✓"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.confirmCustomDays()
+                }
               }
             }
 
@@ -403,48 +536,11 @@ Panel {
               visible: root.selectedStats.gpu && root.selectedStats.gpu.avg !== null && root.selectedStats.gpu.avg !== undefined
               width: parent.width; label: "GPU"; stat: root.selectedStats.gpu
             }
-
-            // Custom last-N-days (AWS-style arbitrary range)
-            Row {
-              width: parent.width
-              spacing: Style.space(8)
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Last N days"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-              }
-
-              NumberField {
-                anchors.verticalCenter: parent.verticalCenter
-                label: ""
-                value: root.customDays
-                from: 0
-                to: 90
-                stepSize: 1
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                onModified: function(v) { root.customDays = v }
-              }
-
-              Button {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Apply"
-                bordered: true
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: root.customDays >= 1
-                onClicked: root.applyCustomDays()
-              }
-            }
           }
 
-          // ---- sparklines for the selected window ----
+          // ---- sparklines for the selected window (hidden when Netdata has no series yet) ----
           Column {
-            visible: root.online
+            visible: root.online && root.hasTrend
             width: parent.width
             spacing: Style.space(8)
 
@@ -456,10 +552,16 @@ Panel {
               font.bold: true
             }
 
-            SparkLine { width: parent.width; label: "CPU"; values: root.series.cpu || [] }
-            SparkLine { width: parent.width; label: "RAM"; values: root.series.ram || [] }
             SparkLine {
-              visible: (root.series.gpu || []).some(function(v) { return v !== null && v !== undefined })
+              visible: Model.seriesHasPoints(root.series.cpu)
+              width: parent.width; label: "CPU"; values: root.series.cpu || []
+            }
+            SparkLine {
+              visible: Model.seriesHasPoints(root.series.ram)
+              width: parent.width; label: "RAM"; values: root.series.ram || []
+            }
+            SparkLine {
+              visible: Model.seriesHasPoints(root.series.gpu)
               width: parent.width; label: "GPU"; values: root.series.gpu || []
             }
           }
@@ -493,13 +595,6 @@ Panel {
           Row {
             spacing: Style.space(8)
             Button {
-              text: "Open Netdata"
-              bordered: true
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: root.openNetdata()
-            }
-            Button {
               text: root.exporting ? "Exporting…" : "Export CSV"
               bordered: true
               foreground: root.foreground
@@ -532,7 +627,7 @@ Panel {
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
-            text: "← → range · 1–5 · a apply days · e export · r refresh · o Netdata"
+            text: "← → range · 1–5 · c custom · e export · r refresh · o Netdata"
           }
         }
       }

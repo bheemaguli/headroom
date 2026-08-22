@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 DEFAULT_URL = os.environ.get("SYSTEM_HEALTH_CHECK_URL", "http://127.0.0.1:19999")
 # Presets shown in the bar panel (AWS console–style ranges).
 PANEL_WINDOWS = ["1h", "24h", "7d", "14d", "30d"]
-USER_AGENT = "system-health-check/1.2 (+omarchy-plugin)"
+USER_AGENT = "system-health-check/1.3 (+omarchy-plugin)"
 WINDOW_RE = re.compile(r"^(\d+)([smhd])$", re.IGNORECASE)
 UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
@@ -598,41 +598,58 @@ def export_csv(base, label, seconds, path=None):
     return str(out)
 
 
-def _first_metric(windows, metric, field, order=None):
-    order = order or ("30d", "14d", "7d", "24h", "1h")
-    for key in order:
-        w = windows.get(key) or {}
-        stat = w.get(metric) or {}
-        if stat.get("samples"):
-            val = stat.get(field)
-            if val is not None:
-                return val, key
-    return None, None
+def human_window(label):
+    """7d → '7 day', 24h → '24 hour' (for 'Based on … usage analysis')."""
+    try:
+        canonical, _seconds = parse_window(label)
+    except ValueError:
+        return str(label or "selected")
+    m = WINDOW_RE.match(canonical)
+    if not m:
+        return canonical
+    amount = int(m.group(1))
+    unit = m.group(2).lower()
+    names = {"s": "second", "m": "minute", "h": "hour", "d": "day"}
+    return f"{amount} {names.get(unit, unit)}"
+
+
+def _metric(window, name, field):
+    stat = (window or {}).get(name) or {}
+    if not stat.get("samples"):
+        return None
+    return stat.get(field)
 
 
 def advice_from_windows(windows, now, focus=None):
-    tips = []
+    """Sizing tips for the selected range only (no cross-window fallback)."""
     focus = focus or "7d"
-    # Prefer the focus window, then fall back to whatever Netdata has retained.
-    order = [focus] + [k for k in ("30d", "14d", "7d", "24h", "1h") if k != focus]
+    phrase = human_window(focus)
+    lead = f"Based on {phrase} usage analysis"
+    window = (windows or {}).get(focus) or {}
 
-    ram_avg, ram_src = _first_metric(windows, "ram", "avg", order)
-    ram_p95, _ = _first_metric(windows, "ram", "p95", order)
-    ram_peak, _ = _first_metric(windows, "ram", "max", order)
-    cpu_avg, cpu_src = _first_metric(windows, "cpu", "avg", order)
-    cpu_peak, _ = _first_metric(windows, "cpu", "max", order)
-    gpu_avg, gpu_src = _first_metric(windows, "gpu", "avg", order)
-    gpu_peak, _ = _first_metric(windows, "gpu", "max", order)
+    ram_avg = _metric(window, "ram", "avg")
+    ram_p95 = _metric(window, "ram", "p95")
+    ram_peak = _metric(window, "ram", "max")
+    cpu_avg = _metric(window, "cpu", "avg")
+    cpu_peak = _metric(window, "cpu", "max")
+    gpu_avg = _metric(window, "gpu", "avg")
+    gpu_peak = _metric(window, "gpu", "max")
 
-    src = ram_src or cpu_src or gpu_src
-    if src and src != focus:
-        tips.append(f"Longer ranges are still filling — advice uses {src} until {focus} has data.")
+    if all(v is None for v in (ram_avg, ram_p95, ram_peak, cpu_avg, cpu_peak, gpu_avg, gpu_peak)):
+        return ["Not enough data to analyse this range yet."]
 
+    tips = []
     total = (now or {}).get("ram_total_gb")
+
     if ram_avg is not None and ram_avg >= 70:
         tips.append("RAM averages high — prefer more memory on the next computer.")
     elif ram_p95 is not None and ram_p95 >= 80:
         tips.append("RAM p95 is high — size memory for sustained load, not idle.")
+    elif ram_peak is not None and ram_peak >= 85 and (ram_avg or 0) < 50:
+        tips.append(
+            "RAM peaked hard but average stayed modest — treat that as a possible one-off "
+            "unless those workloads follow you."
+        )
     elif ram_peak is not None and ram_peak >= 85:
         tips.append("RAM peaks hard under load — size up if those workloads move with you.")
     elif total is not None and total <= 16 and ram_avg is not None and ram_avg >= 55:
@@ -641,7 +658,7 @@ def advice_from_windows(windows, now, focus=None):
     if cpu_avg is not None and cpu_avg >= 45:
         tips.append("CPU stays busy for long stretches — prioritize sustained multi-core performance.")
     elif cpu_peak is not None and cpu_peak >= 90 and (cpu_avg or 0) < 25:
-        tips.append("CPU spikes are short; a mid-range CPU is probably enough.")
+        tips.append("CPU spikes look short or one-off; a mid-range CPU is probably enough.")
 
     if gpu_avg is not None and gpu_avg >= 25:
         tips.append("GPU sees real use — look for a discrete GPU or a strong modern iGPU.")
@@ -650,8 +667,14 @@ def advice_from_windows(windows, now, focus=None):
     elif gpu_avg is None and gpu_peak is None and (now or {}).get("gpu") is None:
         tips.append("No GPU metrics from Netdata yet — enable the NVIDIA/AMD collector if you care about GPU headroom.")
 
-    if len(tips) == 0 or (len(tips) == 1 and tips[0].startswith("Longer ranges")):
-        tips.append("Nothing looks maxed over the sampled windows — mid-range CPU/RAM should cover daily use.")
+    if not tips:
+        tips.append(f"{lead}, nothing looks maxed — mid-range CPU/RAM should cover this period's use.")
+    else:
+        first = tips[0]
+        # Lowercase only normal sentence case; keep acronyms like CPU/RAM.
+        if first and first[0].isupper() and (len(first) == 1 or not first[1].isupper()):
+            first = first[0].lower() + first[1:]
+        tips[0] = f"{lead}, {first}"
     return tips
 
 
@@ -666,12 +689,20 @@ def panel_payload(base, focus_window="7d", extra_days=None):
         charts = list_charts(base)
         now = build_now(base, charts)
 
-        window_labels = merge_window_keys(extra_days)
-        if focus_label not in window_labels:
-            window_labels.append(focus_label)
+        # Preset tabs stay fixed; custom focus is computed separately.
+        window_labels = list(PANEL_WINDOWS)
+        compute_labels = list(window_labels)
+        if focus_label not in compute_labels:
+            compute_labels.append(focus_label)
+        if extra_days is not None:
+            days = int(extra_days)
+            if 1 <= days <= 90:
+                custom_label = f"{days}d"
+                if custom_label not in compute_labels:
+                    compute_labels.append(custom_label)
 
         windows = {}
-        for label in window_labels:
+        for label in compute_labels:
             _lbl, seconds = parse_window(label)
             windows[label] = window_stats(base, charts, seconds)
 
@@ -703,7 +734,7 @@ def panel_payload(base, focus_window="7d", extra_days=None):
             "error": str(e),
             "focus": focus_label,
             "custom_days": int(extra_days) if extra_days not in (None, "") else None,
-            "window_keys": merge_window_keys(extra_days),
+            "window_keys": list(PANEL_WINDOWS),
             "now": {},
             "windows": {},
             "series": {},
