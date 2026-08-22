@@ -55,13 +55,17 @@ BarWidget {
     }
   }
 
-  BarIconButton {
+  // WidgetButton (not BarIconButton): icon slots are fixed-width and cause
+  // multi-digit CPU·RAM·GPU text to overflow into neighboring widgets.
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.chipLabel : "···"
     tooltipText: panelLoader.item ? panelLoader.item.chipTooltip : "System health"
     active: panelLoader.item ? panelLoader.item.alarming : false
+    fontSize: Style.font.caption
+    horizontalMargin: 8
     onPressed: function(b) {
       if (b === Qt.MiddleButton && panelLoader.item && panelLoader.item.refresh)
         panelLoader.item.refresh()

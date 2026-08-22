@@ -263,7 +263,8 @@ Panel {
               ? ((root.payload.netdata_version ? "Netdata " + root.payload.netdata_version : "Netdata") +
                  (root.loading ? " · refreshing" : ""))
               : "Netdata offline"
-            detail: root.online ? root.selectedWindow : "setup"
+            // Range lives only in HISTORY tabs — avoid a duplicate "24h" pill here.
+            detail: root.online ? "" : "setup"
             foreground: root.alarming ? root.urgent : root.foreground
             fontFamily: root.fontFamily
             iconComponent: Component {
@@ -448,7 +449,7 @@ Panel {
             spacing: Style.space(8)
 
             Text {
-              text: "TREND  ·  " + root.selectedWindow
+              text: "TREND"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
