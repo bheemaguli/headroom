@@ -127,7 +127,6 @@ Panel {
     if (exportProc.running) return
     exporting = true
     lastExportPath = ""
-    clearExportPathTimer.stop()
     var focus = root.focusWindow
     var dir = Quickshell.env("HOME") + "/Downloads"
     exportProc.command = [
@@ -135,11 +134,6 @@ Panel {
       "export", focus, "-o", dir
     ]
     exportProc.running = true
-  }
-
-  function clearExportPath() {
-    lastExportPath = ""
-    clearExportPathTimer.stop()
   }
 
   function selectWindow(delta) {
@@ -173,13 +167,19 @@ Panel {
 
   Timer {
     id: clearExportPathTimer
-    interval: 4000
+    interval: 3500
     repeat: false
+    // Bind running so any non-empty path always starts a fresh countdown.
+    running: root.lastExportPath !== ""
     onTriggered: root.lastExportPath = ""
   }
 
-  onOpenedChanged: {
-    if (!opened) root.clearExportPath()
+  Connections {
+    target: root.controller
+    function onOpenChanged() {
+      if (!root.controller.open)
+        root.lastExportPath = ""
+    }
   }
 
   Component.onCompleted: {
@@ -237,12 +237,12 @@ Panel {
       onStreamFinished: {
         root.exporting = false
         var path = String(exportOut.text || "").trim()
+        // Take the last non-empty line in case stdout accumulates across runs.
+        var lines = path.split(/\r?\n/).filter(function(l) { return l.length > 0 })
+        path = lines.length ? lines[lines.length - 1] : ""
         root.lastExportPath = path
-        if (path) {
-          clearExportPathTimer.restart()
-          if (root.bar)
-            root.bar.run("omarchy-notification-send \"Exported " + path.replace(/"/g, "") + "\"")
-        }
+        if (path && root.bar)
+          root.bar.run("omarchy-notification-send \"Exported " + path.replace(/"/g, "") + "\"")
       }
     }
     stderr: StdioCollector { waitForEnd: true }
@@ -649,7 +649,7 @@ Panel {
 
             Item {
               width: parent.width
-              height: Style.space(28)
+              height: Math.max(exportButton.implicitHeight, Style.space(28))
 
               Text {
                 visible: root.lastExportPath !== ""
@@ -657,7 +657,6 @@ Panel {
                 anchors.right: exportButton.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
-                wrapMode: Text.WrapAnywhere
                 elide: Text.ElideMiddle
                 maximumLineCount: 1
                 color: root.dim
@@ -666,35 +665,16 @@ Panel {
                 text: "Saved " + root.lastExportPath
               }
 
-              BorderSurface {
+              Button {
                 id: exportButton
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: exportLabel.implicitWidth + Style.space(14)
-                implicitHeight: Style.space(28)
-                color: exportHover.hovered ? root.track : "transparent"
-                borderSpec: Border.controlSpec(
-                  exportHover.hovered ? "hover-cursor" : "normal",
-                  root.foreground, Color.accent)
-                radius: Style.cornerRadius
-                opacity: (!root.online || root.exporting) ? 0.5 : 1
-
-                Text {
-                  id: exportLabel
-                  anchors.centerIn: parent
-                  text: "Export " + (root.exporting ? "󰔟" : "󰁅")
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-
-                HoverHandler { id: exportHover }
-                MouseArea {
-                  anchors.fill: parent
-                  cursorShape: Qt.PointingHandCursor
-                  enabled: root.online && !root.exporting
-                  onClicked: root.exportCsv()
-                }
+                text: root.exporting ? "Export 󰔟" : "Export ↓"
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: root.online && !root.exporting
+                onClicked: root.exportCsv()
               }
             }
           }
