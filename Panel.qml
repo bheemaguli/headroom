@@ -23,6 +23,7 @@ Panel {
 
   readonly property string netdataUrl: String(setting("netdataUrl", "http://127.0.0.1:19999"))
   readonly property int refreshSeconds: Math.max(5, Number(setting("refreshSeconds", 15)) || 15)
+  readonly property string defaultWindow: String(setting("defaultWindow", "7d") || "7d")
   readonly property int cpuWarn: Number(setting("cpuWarnPercent", 85)) || 85
   readonly property int ramWarn: Number(setting("ramWarnPercent", 80)) || 80
   readonly property int gpuWarn: Number(setting("gpuWarnPercent", 80)) || 80
@@ -33,23 +34,27 @@ Panel {
   property bool loading: false
   property string lastError: ""
   property bool cursorActive: false
+  property string selectedWindow: "7d"
 
   readonly property bool online: !!(payload && payload.online)
   readonly property var now: (payload && payload.now) ? payload.now : ({})
   readonly property var windows: (payload && payload.windows) ? payload.windows : ({})
   readonly property var series: (payload && payload.series) ? payload.series : ({})
   readonly property var advice: (payload && payload.advice) ? payload.advice : []
+  readonly property var historyKeys: Model.windowKeys(payload)
   readonly property bool alarming: Model.alarming(now, cpuWarn, ramWarn, gpuWarn)
   readonly property string chipLabel: Model.barLabel(payload)
   readonly property string chipTooltip: Model.barTooltip(payload)
+  readonly property var selectedStats: windows[selectedWindow] || ({})
 
   function openFromHotkey() { root.open() }
 
   function refresh() {
     if (poll.running) return
     loading = true
+    var focus = root.selectedWindow || root.defaultWindow || "7d"
     poll.command = [
-      "python3", root.cliPath, "--url", root.netdataUrl, "panel"
+      "python3", root.cliPath, "--url", root.netdataUrl, "panel", "--window", focus
     ]
     poll.running = true
   }
@@ -62,15 +67,19 @@ Panel {
   }
 
   function selectWindow(delta) {
-    var keys = Model.windowKeys()
+    var keys = root.historyKeys
     var idx = keys.indexOf(selectedWindow)
-    if (idx < 0) idx = 1
+    if (idx < 0) idx = keys.indexOf(root.defaultWindow)
+    if (idx < 0) idx = 0
     idx = (idx + delta + keys.length) % keys.length
     selectedWindow = keys[idx]
+    root.refresh()
   }
 
-  property string selectedWindow: "24h"
-  readonly property var selectedStats: windows[selectedWindow] || ({})
+  function chooseWindow(key) {
+    selectedWindow = key
+    root.refresh()
+  }
 
   Timer {
     id: refreshTimer
@@ -80,8 +89,16 @@ Panel {
     onTriggered: root.refresh()
   }
 
-  Component.onCompleted: Qt.callLater(root.refresh)
+  Component.onCompleted: {
+    selectedWindow = root.defaultWindow || "7d"
+    Qt.callLater(root.refresh)
+  }
   onNetdataUrlChanged: Qt.callLater(root.refresh)
+  onDefaultWindowChanged: {
+    if (historyKeys.indexOf(defaultWindow) >= 0)
+      selectedWindow = defaultWindow
+    Qt.callLater(root.refresh)
+  }
   onRefreshSecondsChanged: refreshTimer.restart()
 
   Process {
@@ -160,9 +177,11 @@ Panel {
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
         else if (t === "o" || t === "O") root.openNetdata()
-        else if (t === "1") root.selectedWindow = "1h"
-        else if (t === "2") root.selectedWindow = "24h"
-        else if (t === "3") root.selectedWindow = "7d"
+        else if (t === "1") root.chooseWindow("1h")
+        else if (t === "2") root.chooseWindow("24h")
+        else if (t === "3") root.chooseWindow("7d")
+        else if (t === "4") root.chooseWindow("14d")
+        else if (t === "5") root.chooseWindow("30d")
       }
 
       Flickable {
@@ -293,7 +312,7 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(8)
                 Repeater {
-                  model: Model.windowKeys()
+                  model: root.historyKeys
                   delegate: BorderSurface {
                     required property string modelData
                     implicitWidth: winLabel.implicitWidth + Style.space(10)
@@ -314,7 +333,7 @@ Panel {
                     MouseArea {
                       anchors.fill: parent
                       cursorShape: Qt.PointingHandCursor
-                      onClicked: root.selectedWindow = modelData
+                      onClicked: root.chooseWindow(modelData)
                     }
                   }
                 }
@@ -329,14 +348,14 @@ Panel {
             }
           }
 
-          // ---- 24h sparklines ----
+          // ---- sparklines for the selected window ----
           Column {
             visible: root.online
             width: parent.width
             spacing: Style.space(8)
 
             Text {
-              text: "LAST 24H"
+              text: "TREND  ·  " + root.selectedWindow
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -357,7 +376,7 @@ Panel {
             width: parent.width
             spacing: Style.space(6)
             Text {
-              text: "FOR YOUR NEXT LAPTOP"
+              text: "FOR YOUR NEXT COMPUTER"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -401,7 +420,7 @@ Panel {
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
-            text: "← → window · 1/2/3 · r refresh · o Netdata · click chip · middle refresh · right open"
+            text: "← → range · 1–5 · r refresh · o Netdata · middle refresh · right open"
           }
         }
       }

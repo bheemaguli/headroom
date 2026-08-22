@@ -1,6 +1,6 @@
 # System Health Check
 
-Netdata-backed CPU · RAM · GPU tracking for [Omarchy](https://omarchy.org) — a bar chip with history, plus a CLI for laptop-sizing reports.
+Netdata-backed CPU · RAM · GPU tracking for [Omarchy](https://omarchy.org) — a bar chip with CloudWatch-style history, plus a CLI for sizing your next computer.
 
 Netdata does the collecting. This project is the Omarchy UI and command-line front end.
 
@@ -15,6 +15,8 @@ omarchy pkg add netdata
 sudo systemctl enable --now netdata
 ```
 
+Leave Netdata running for days/weeks so longer ranges (`14d`, `30d`) fill in. Retention is limited by Netdata’s disk quota (`multidb-disk-quota`).
+
 ## Install (Omarchy plugin)
 
 ```bash
@@ -27,15 +29,9 @@ Optional CLI on your PATH:
 ln -sf ~/.config/omarchy/plugins/bheemaguli.system-health-check/bin/system-health-check ~/.local/bin/system-health-check
 ```
 
-Or run from a checkout:
-
-```bash
-./bin/system-health-check report
-```
-
 ## Bar chip
 
-Shows live **CPU · RAM · GPU** percentages from Netdata (e.g. `12·48·5`).
+Shows live **CPU · RAM · GPU** percentages (e.g. `12·48·5`).
 
 | Input | Action |
 |-------|--------|
@@ -43,56 +39,50 @@ Shows live **CPU · RAM · GPU** percentages from Netdata (e.g. `12·48·5`).
 | Middle-click | Refresh |
 | Right-click | Open Netdata dashboard |
 
-Panel keyboard: `←` `→` window · `1`/`2`/`3` · `r` refresh · `o` Netdata · Esc close
+Panel: ranges **1h · 24h · 7d · 14d · 30d** with **avg / max / p95**, trend sparkline for the selected range, and **For your next computer** advice.
 
-### What the panel shows
-
-- **Now** — CPU, RAM (with GB), GPU, load, disk
-- **History** — avg / peak for 1h · 24h · 7d
-- **Last 24h** — sparklines
-- **For your next laptop** — short advice from those windows
+Keyboard: `←` `→` range · `1`–`5` · `r` refresh · `o` Netdata · Esc close
 
 ## CLI
 
 ```bash
 system-health-check status
 system-health-check now
-system-health-check history 24h
-system-health-check report
+system-health-check history 7d
+system-health-check history 14d
+system-health-check history 30d
+system-health-check report 14d
 system-health-check charts 7d
 system-health-check open
-system-health-check panel          # JSON for the bar plugin
+system-health-check panel --window 7d
 ```
 
-Flags:
+Any `Ns` / `Nm` / `Nh` / `Nd` window works (max 90d), subject to what Netdata still has stored.
 
 ```bash
-system-health-check --url http://127.0.0.1:19999 report
-system-health-check --json now
+system-health-check --json history 14d
+SYSTEM_HEALTH_CHECK_URL=http://127.0.0.1:19999 system-health-check report 30d
 ```
-
-`SYSTEM_HEALTH_CHECK_URL` overrides the default Netdata base URL.
 
 ## Settings (bar widget)
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `netdataUrl` | `http://127.0.0.1:19999` | Netdata base URL |
-| `refreshSeconds` | `15` | How often the chip refreshes |
-| `cpuWarnPercent` | `85` | Chip warning threshold |
-| `ramWarnPercent` | `80` | Chip warning threshold |
-| `gpuWarnPercent` | `80` | Chip warning threshold |
+| `defaultWindow` | `7d` | Initial history range |
+| `refreshSeconds` | `15` | Chip refresh interval |
+| `cpuWarnPercent` | `85` | Warning threshold |
+| `ramWarnPercent` | `80` | Warning threshold |
+| `gpuWarnPercent` | `80` | Warning threshold |
 
 ## Two machines
-
-Same install on each box:
 
 ```bash
 omarchy plugin add https://github.com/bheemaguli/system-health-check.git --enable
 omarchy pkg add netdata && sudo systemctl enable --now netdata
 ```
 
-After a week, run `system-health-check report` (or read the panel advice) before you buy.
+After a week or more: `system-health-check report 14d` (or the panel advice).
 
 ## Remove
 

@@ -21,8 +21,10 @@ function gb(v) {
 }
 
 function statLine(stat) {
-  if (!stat || stat.avg === null || stat.avg === undefined) return "avg —   peak —"
-  return "avg " + pct(stat.avg) + "   peak " + pct(stat.peak)
+  if (!stat || stat.avg === null || stat.avg === undefined)
+    return "avg —   max —   p95 —"
+  var mx = (stat.max !== undefined && stat.max !== null) ? stat.max : stat.peak
+  return "avg " + pct(stat.avg) + "   max " + pct(mx) + "   p95 " + pct(stat.p95)
 }
 
 function alarming(now, cpuWarn, ramWarn, gpuWarn) {
@@ -77,6 +79,8 @@ function sparkPath(values, width, height) {
   return pts.join(" ")
 }
 
-function windowKeys() {
-  return ["1h", "24h", "7d"]
+function windowKeys(payload) {
+  if (payload && payload.window_keys && payload.window_keys.length)
+    return payload.window_keys
+  return ["1h", "24h", "7d", "14d", "30d"]
 }
