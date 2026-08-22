@@ -6,7 +6,7 @@
   "author": "bheemaguli",
   "license": "MIT",
   "description": "Netdata-backed CPU, RAM, and GPU headroom — CloudWatch-style avg/max/p95, custom ranges, CSV export, and advice on whether this machine is still enough.",
-  "homepage": "https://github.com/bheemaguli/headroom",
+  "homepage": "https://github.com/bheemaguli/system-health-check",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"

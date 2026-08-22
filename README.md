@@ -86,7 +86,7 @@ In the panel: **C** opens a custom day range (input is labeled **days**), **✓*
 ## Two machines
 
 ```bash
-omarchy plugin add https://github.com/bheemaguli/headroom.git --enable
+omarchy plugin add https://github.com/bheemaguli/system-health-check.git --enable
 omarchy pkg add netdata && sudo systemctl enable --now netdata
 ```
 
