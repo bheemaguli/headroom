@@ -2,6 +2,8 @@
 
 Netdata-backed CPU · RAM · GPU **headroom** for [Omarchy](https://omarchy.org) — a bar chip with CloudWatch-style history, plus a CLI that answers whether this machine is still enough for the long run.
 
+![Headroom panel screenshot](assets/screenshot.png)
+
 Netdata does the collecting. This project is the Omarchy UI and command-line front end.
 
 ## Requirements
